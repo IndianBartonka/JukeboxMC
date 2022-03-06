@@ -124,6 +124,10 @@ public abstract class LevelDBChunk {
         this.populated = populated;
     }
 
+    public boolean isPopulated() {
+        return this.populated;
+    }
+
     public void setHeight( short[] height ) {
         this.height = height;
     }

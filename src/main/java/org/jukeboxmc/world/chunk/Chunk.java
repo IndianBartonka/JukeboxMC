@@ -269,6 +269,13 @@ public class Chunk extends LevelDBChunk {
 
     //======== Save and Load =========
 
+    public void populate() {
+        if ( !this.populated ) {
+            this.world.getWorldGenerator().populate(this);
+            this.populated = true;
+        }
+    }
+
     public void save( DB db ) {
         WriteBatch writeBatch = db.createWriteBatch();
 

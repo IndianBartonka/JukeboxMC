@@ -5,6 +5,8 @@ import org.jukeboxmc.block.BlockDirt;
 import org.jukeboxmc.block.BlockGrass;
 import org.jukeboxmc.math.Vector;
 import org.jukeboxmc.world.Biome;
+import org.jukeboxmc.world.Dimension;
+import org.jukeboxmc.world.World;
 import org.jukeboxmc.world.chunk.Chunk;
 
 /**
@@ -13,6 +15,7 @@ import org.jukeboxmc.world.chunk.Chunk;
  */
 public class FlatGenerator extends WorldGenerator {
 
+    private World world;
     private final BlockGrass blockGrass;
     private final BlockDirt blockDirt;
     private final BlockBedrock blockBedrock;
@@ -24,7 +27,8 @@ public class FlatGenerator extends WorldGenerator {
     }
 
     @Override
-    public void generate( Chunk chunk ) {
+    public Chunk generate( int chunkX, int chunkZ, Dimension dimension ) {
+        Chunk chunk = new Chunk( this.world, chunkX, chunkX, dimension );
         for ( int blockX = 0; blockX < 16; blockX++ ) {
             for ( int blockZ = 0; blockZ < 16; blockZ++ ) {
                 for ( int blockY = 0; blockY < 16; blockY++ ) {
@@ -37,10 +41,21 @@ public class FlatGenerator extends WorldGenerator {
                 chunk.setBlock( blockX, 3, blockZ, 0, this.blockGrass );
             }
         }
+        return chunk;
     }
 
     @Override
     public Vector getSpawnLocation() {
         return new Vector( 0, 4, 0 );
+    }
+
+    @Override
+    public void populate( Chunk chunk ) {
+
+    }
+
+    @Override
+    public void setWorld( World world ) {
+        this.world = world;
     }
 }

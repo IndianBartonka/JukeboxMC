@@ -94,6 +94,7 @@ public class World {
         this.name = name;
         this.server = server;
         this.worldGenerator = worldGenerator;
+        this.worldGenerator.setWorld( this );
 
         this.blockUpdateList = new BlockUpdateList();
 
@@ -262,14 +263,12 @@ public class World {
             }
 
             if ( version == null ) {
-                WorldGenerator worldGenerator;
                 if ( this.worldGenerator != null ) {
-                    worldGenerator = this.worldGenerator;
-                } else {
-                    worldGenerator = Server.getInstance().getOverworldGenerator();
+                    Chunk generatedChunk = this.worldGenerator.generate( chunkX, chunkZ, dimension );
+                    if ( generatedChunk != null ) {
+                        chunk.populate();
+                    }
                 }
-
-                worldGenerator.generate( chunk );
                 return chunk;
             }
 
