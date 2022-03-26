@@ -1,5 +1,7 @@
 package org.jukeboxmc.player;
 
+import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
+import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.longs.*;
 import org.apache.commons.math3.util.FastMath;
 import org.jukeboxmc.Server;
@@ -24,7 +26,11 @@ import org.jukeboxmc.event.player.PlayerDeathEvent;
 import org.jukeboxmc.event.player.PlayerJoinEvent;
 import org.jukeboxmc.event.player.PlayerQuitEvent;
 import org.jukeboxmc.event.player.PlayerRespawnEvent;
+import org.jukeboxmc.form.Form;
+import org.jukeboxmc.form.FormListener;
 import org.jukeboxmc.inventory.*;
+import org.jukeboxmc.inventory.transaction.CraftingTransaction;
+import org.jukeboxmc.inventory.transaction.InventoryAction;
 import org.jukeboxmc.item.Item;
 import org.jukeboxmc.item.ItemAir;
 import org.jukeboxmc.item.enchantment.EnchantmentKnockback;
@@ -61,9 +67,11 @@ public class Player extends EntityHuman implements InventoryHolder, CommandSende
     private final AdventureSettings adventureSettings;
     private EntityFishingHook entityFishingHook;
 
+    private CraftingTransaction craftingTransaction;
+
     private ContainerInventory currentInventory;
-    private final CursorInventory cursorInventory;
     private final CraftingTableInventory craftingTableInventory;
+    private final CursorInventory cursorInventory;
     private final CartographyTableInventory cartographyTableInventory;
     private final SmithingTableInventory smithingTableInventory;
     private final AnvilInventory anvilInventory;
@@ -101,7 +109,12 @@ public class Player extends EntityHuman implements InventoryHolder, CommandSende
     private final Set<UUID> emotes = new HashSet<>();
     private final Set<UUID> hiddenPlayers = new HashSet<>();
 
-    private final Map<UUID, List<String>> permissions = new HashMap<>();
+    private final Map<UUID, Set<String>> permissions = new HashMap<>();
+
+    private int formId;
+    private int serverSettingsForm = -1;
+    private final Int2ObjectMap<Form> forms = new Int2ObjectOpenHashMap<>();
+    private final Int2ObjectMap<FormListener> formListeners = new Int2ObjectOpenHashMap<>();
 
     public Player( PlayerConnection playerConnection ) {
         this.playerConnection = playerConnection;
@@ -237,11 +250,6 @@ public class Player extends EntityHuman implements InventoryHolder, CommandSende
     }
     // ========== Chunk ==========
 
-    /*
-    Ja hab es versucht sync zu machen aber dann ging nix mehr xD
-
-     */
-
     public void needNewChunks() {
         if ( this.requestedChunks ) return;
 
@@ -368,6 +376,18 @@ public class Player extends EntityHuman implements InventoryHolder, CommandSende
     }
 
     // ========== Other ==========
+
+    public CraftingTransaction createCraftingTransaction( List<InventoryAction> inventoryTransactions ) {
+        return this.craftingTransaction = new CraftingTransaction( this, inventoryTransactions );
+    }
+
+    public CraftingTransaction getCraftingTransaction() {
+        return this.craftingTransaction;
+    }
+
+    public void resetCraftingTransaction() {
+        this.craftingTransaction = null;
+    }
 
     public PlayerConnection getPlayerConnection() {
         return this.playerConnection;
@@ -536,6 +556,12 @@ public class Player extends EntityHuman implements InventoryHolder, CommandSende
         }
         this.gameMode = gameMode;
 
+        if(this.gameMode.equals( GameMode.SPECTATOR )) {
+            this.despawn();
+        } else {
+            this.spawn();
+        }
+
         AdventureSettings adventureSettings = this.adventureSettings;
         adventureSettings.setWorldImmutable( ( gameMode.ordinal() & 0x02 ) > 0 );
         adventureSettings.setBuildAndMine( ( gameMode.ordinal() & 0x02 ) <= 0 );
@@ -549,7 +575,7 @@ public class Player extends EntityHuman implements InventoryHolder, CommandSende
         adventureSettings.update();
 
         SetGamemodePacket setGamemodePacket = new SetGamemodePacket();
-        setGamemodePacket.setGameMode( gameMode );
+        setGamemodePacket.setGameMode( this.gameMode != GameMode.SPECTATOR ? this.gameMode : GameMode.CREATIVE );
         this.playerConnection.sendPacket( setGamemodePacket );
     }
 
@@ -571,7 +597,7 @@ public class Player extends EntityHuman implements InventoryHolder, CommandSende
 
     // ========== Inventory ==========
 
-    public Inventory getInventory( WindowId windowId ) {
+    public Inventory getInventory( WindowId windowId, int slot ) {
         return switch ( windowId ) {
             case PLAYER -> this.getInventory();
             case CURSOR_DEPRECATED -> this.getCursorInventory();
@@ -584,12 +610,12 @@ public class Player extends EntityHuman implements InventoryHolder, CommandSende
         return this.currentInventory;
     }
 
-    public CursorInventory getCursorInventory() {
-        return this.cursorInventory;
-    }
-
     public CraftingTableInventory getCraftingTableInventory() {
         return this.craftingTableInventory;
+    }
+
+    public CursorInventory getCursorInventory() {
+        return this.cursorInventory;
     }
 
     public CartographyTableInventory getCartographyTableInventory() {
@@ -700,21 +726,38 @@ public class Player extends EntityHuman implements InventoryHolder, CommandSende
 
     public void addPermission( String permission ) {
         if ( !this.permissions.containsKey( this.uuid ) ) {
-            this.permissions.put( this.uuid, new ArrayList<>() );
+            this.permissions.put( this.uuid, new HashSet<>() );
         }
         this.permissions.get( this.uuid ).add( permission.toLowerCase() );
+        this.sendCommandData();
+    }
+
+    public void addPermissions( Collection<String> permissions ) {
+        if ( !this.permissions.containsKey( this.uuid ) ) {
+            this.permissions.put( this.uuid, new HashSet<>(permissions) );
+        } else {
+            this.permissions.get( this.uuid ).addAll( permissions );
+        }
+        this.sendCommandData();
     }
 
     public void removePermission( String permission ) {
         if ( this.permissions.containsKey( this.uuid ) ) {
             this.permissions.get( this.uuid ).remove( permission );
+            this.sendCommandData();
+        }
+    }
+
+    public void removePermissions( Collection<String> permissions ) {
+        if ( this.permissions.containsKey( this.uuid ) ) {
+            this.permissions.get( this.uuid ).removeAll( permissions );
+            this.sendCommandData();
         }
     }
 
     public boolean isOp() {
         return this.adventureSettings.isOperator();
     }
-
 
     public void setOp( boolean value ) {
         this.sendCommandData();
@@ -932,10 +975,10 @@ public class Player extends EntityHuman implements InventoryHolder, CommandSende
                 this.setSpawnLocation( spawnLocation );
             }
 
+            this.craftingTableInventory.addViewer( this );
             this.playerInventory.addViewer( this );
             this.armorInventory.addViewer( this );
             this.cursorInventory.addViewer( this );
-            this.craftingTableInventory.addViewer( this );
             this.cartographyTableInventory.addViewer( this );
             this.smithingTableInventory.addViewer( this );
             this.anvilInventory.addViewer( this );
@@ -1202,6 +1245,78 @@ public class Player extends EntityHuman implements InventoryHolder, CommandSende
         if ( this != player ) {
             player.spawn( this );
             this.hiddenPlayers.remove( player.getUUID() );
+        }
+    }
+
+    public void sendServerSettings( Player player ) {
+        if (this.serverSettingsForm != -1) {
+            Form form = this.forms.get(this.serverSettingsForm);
+
+            ServerSettingsResponsePacket response = new ServerSettingsResponsePacket();
+            response.setFormId( this.serverSettingsForm );
+            response.setJson( form.toJSON().toJSONString() );
+            player.sendPacket( response );
+        }
+    }
+
+    public <R> FormListener<R> showForm( Player player, Form<R> form ) {
+        int formId = this.formId++;
+        this.forms.put(formId, form);
+        FormListener formListener = new FormListener<R>();
+        this.formListeners.put(formId, formListener);
+
+        String json = form.toJSON().toJSONString();
+        ModalRequestPacket packetModalRequest = new ModalRequestPacket();
+        packetModalRequest.setFormId( formId );
+        packetModalRequest.setJson( json );
+        player.sendPacket( packetModalRequest );
+        return formListener;
+    }
+
+    public <R> FormListener<R> setSettingsForm( Player player, Form<R> form) {
+        if (this.serverSettingsForm != -1) {
+            this.removeSettingsForm();
+        }
+
+        int formId = this.formId++;
+        this.forms.put(formId, form);
+
+        FormListener<R> formListener = new FormListener<R>();
+        this.formListeners.put(formId, formListener);
+        this.serverSettingsForm = formId;
+        return formListener;
+    }
+
+    public void removeSettingsForm() {
+        if (this.serverSettingsForm != -1) {
+            this.forms.remove(this.serverSettingsForm);
+            this.formListeners.remove(this.serverSettingsForm);
+            this.serverSettingsForm = -1;
+        }
+    }
+
+    public void parseGUIResponse(int formId, String json) {
+        // Get the listener and the form
+        Form form = this.forms.get(formId);
+        if (form != null) {
+            // Get listener
+            FormListener formListener = this.formListeners.get(formId);
+
+            if (this.serverSettingsForm != formId) {
+                this.forms.remove(formId);
+                this.formListeners.remove(formId);
+            }
+
+            if (json.equals("null")) {
+                formListener.getCloseConsumer().accept(null);
+            } else {
+                Object resp = form.parseResponse(json);
+                if (resp == null) {
+                    formListener.getCloseConsumer().accept(null);
+                } else {
+                    formListener.getResponseConsumer().accept(resp);
+                }
+            }
         }
     }
 

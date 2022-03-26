@@ -71,6 +71,7 @@ public class World {
     private int worldTime;
 
     private boolean autoSave = true;
+    private boolean showAutoSaveMessage = true;
     private long autoSaveTicker = 0;
     private long autoSaveTick = TimeUnit.MINUTES.toMillis( 5 ) / 50;
     private AtomicBoolean autoSaving = new AtomicBoolean(false );
@@ -133,6 +134,15 @@ public class World {
             for ( Entity entity : this.entities.values() ) {
                 if ( entity != null ) {
                     entity.update( currentTick );
+                }
+            }
+        }
+
+        Collection<BlockEntity> blockEntities = this.getBlockEntities( Dimension.OVERWORLD );
+        if ( blockEntities.size() > 0 ) {
+            for ( BlockEntity blockEntity : blockEntities ) {
+                if ( blockEntity != null ) {
+                    blockEntity.update( currentTick );
                 }
             }
         }
@@ -381,7 +391,14 @@ public class World {
     public void save() {
         this.chunkCache.saveAll();
         this.saveLevelDatFile();
-        Server.getInstance().getLogger().info( "The world \"" + this.name + "\" was saved successfully" );
+
+        if ( this.autoSave ) {
+            if ( this.showAutoSaveMessage ) {
+                Server.getInstance().getLogger().info( "The world \"" + this.name + "\" was saved successfully" );
+            }
+        } else {
+            Server.getInstance().getLogger().info( "The world \"" + this.name + "\" was saved successfully" );
+        }
     }
 
     public void close() {
@@ -439,6 +456,14 @@ public class World {
 
     public boolean isAutoSave() {
         return this.autoSave;
+    }
+
+    public void setShowAutoSaveMessage( boolean showAutoSaveMessage ) {
+        this.showAutoSaveMessage = showAutoSaveMessage;
+    }
+
+    public boolean isShowAutoSaveMessage() {
+        return this.showAutoSaveMessage;
     }
 
     public void setAutoSaveTick( long autoSaveTick ) {
@@ -663,6 +688,11 @@ public class World {
     public void breakBlock( Player player, Vector breakPosition, Item item ) {
         Block breakBlock = this.getBlock( breakPosition );
 
+        if ( player.getGameMode().equals( GameMode.SPECTATOR ) ) {
+            breakBlock.sendBlockUpdate( player );
+            return;
+        }
+
         BlockBreakEvent blockBreakEvent = new BlockBreakEvent( player, breakBlock, breakBlock.getDrops( item ) );
         Server.getInstance().getPluginManager().callEvent( blockBreakEvent );
 
@@ -795,10 +825,14 @@ public class World {
                 }
             }
 
+            if ( player.getGameMode().equals( GameMode.SPECTATOR ) ) {
+                return false;
+            }
+
             BlockPlaceEvent blockPlaceEvent = new BlockPlaceEvent( player, placedBlock, replacedBlock, clickedBlock );
             Server.getInstance().getPluginManager().callEvent( blockPlaceEvent );
 
-            if ( blockPlaceEvent.isCancelled() ) {
+            if ( blockPlaceEvent.isCancelled()) {
                 return false;
             }
             boolean success = blockPlaceEvent.getPlacedBlock().placeBlock( player, this, blockPosition, placePosition, clickedPosition, itemInHand, blockFace );

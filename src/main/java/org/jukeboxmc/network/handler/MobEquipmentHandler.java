@@ -8,8 +8,6 @@ import org.jukeboxmc.item.Item;
 import org.jukeboxmc.network.packet.MobEquipmentPacket;
 import org.jukeboxmc.player.Player;
 
-import java.util.Objects;
-
 /**
  * @author LucGamesYT
  * @version 1.0
@@ -18,7 +16,7 @@ public class MobEquipmentHandler implements PacketHandler<MobEquipmentPacket> {
 
     @Override
     public void handle( MobEquipmentPacket packet, Server server, Player player ) {
-        Inventory inventory = player.getInventory( Objects.requireNonNull( WindowId.getWindowIdById( packet.getWindowId() ) ) );
+        Inventory inventory = player.getInventory( WindowId.getWindowIdById( packet.getWindowId() ), packet.getHotbarSlot() );
         if ( inventory != null ) {
 
             Item item = inventory.getItem( packet.getHotbarSlot() );
