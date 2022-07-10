@@ -4,33 +4,32 @@ import com.nukkitx.protocol.bedrock.packet.BlockPickRequestPacket;
 import org.jukeboxmc.Server;
 import org.jukeboxmc.block.Block;
 import org.jukeboxmc.item.Item;
-import org.jukeboxmc.item.ItemAir;
 import org.jukeboxmc.math.Vector;
-import org.jukeboxmc.player.GameMode;
 import org.jukeboxmc.player.Player;
 
 /**
- * @author LucGamesYT
+ * @author Kaooot
  * @version 1.0
  */
 public class BlockPickRequestHandler implements PacketHandler<BlockPickRequestPacket> {
 
     @Override
     public void handle( BlockPickRequestPacket packet, Server server, Player player ) {
-        Vector position = new Vector( packet.getBlockPosition() );
-        position.setDimension( player.getDimension() );
-        Block pickedBlock = player.getWorld().getBlock( position );
+        Vector blockPosition = new Vector( packet.getBlockPosition() );
+        Block block = player.getWorld().getBlock( blockPosition );
+        Item item = block.toItem();
 
-        if ( player.getGameMode() == GameMode.CREATIVE ) {
-            Item item = pickedBlock.toItem();
-            if ( item instanceof ItemAir ) {
-                Server.getInstance().getLogger().warn( "User try to pick air" );
-                return;
+        if ( !player.getInventory().contains( item ) ) {
+            player.getInventory().setItemInHand( item );
+        } else {
+            for ( int i = 0; i < player.getInventory().getSize(); i++ ) {
+                if ( player.getInventory().getItem( i ).equalsExact( item ) && player.getInventory().getItemInHandSlot() != i ) {
+                    player.getInventory().setItemInHandSlot( i );
+                    player.sendPacket( player.getInventory().createMobEquipmentPacket( player ) );
+                    player.getInventory().sendContents( i, player );
+                    break;
+                }
             }
-            if ( !player.getInventory().contains( item ) ) {
-                player.getInventory().addItem( item );
-            }
-
         }
     }
 }
